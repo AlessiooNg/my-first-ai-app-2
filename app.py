@@ -163,7 +163,9 @@ else:
                         model_name = "glm-4v-flash"  # 使用视觉模型
                         
                         # 把图片转成 Base64 编码
-                        image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
+                   # 每次读取前，把指针重置到开头
+uploaded_file.seek(0) 
+image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
                         
                         # 构造多模态的消息格式
                         messages_for_api = [
