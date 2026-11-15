@@ -11,7 +11,9 @@ st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
-    header {visibility: hidden;}
+   /* 只隐藏主菜单和底部水印，保留顶部折叠按钮 */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
     .stApp { background-color: #f5f7f9; }
     .stChatMessage { font-size: 16px; border-radius: 10px; padding: 10px; }
     [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #e0e0e0; }
