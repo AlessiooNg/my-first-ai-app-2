@@ -2,35 +2,19 @@ import streamlit as st
 from zhipuai import ZhipuAI
 from supabase import create_client, Client
 import uuid
+import base64
 
-# ================= 页面基础配置 =================
 st.set_page_config(page_title="包子", page_icon="🐱", layout="centered")
 
 # ================= 🎨 注入 CSS 医美代码 =================
 st.markdown("""
 <style>
-    /* 隐藏 Streamlit 默认的顶栏菜单和底部水印 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* 修改整个网页的背景色为极其高级的浅灰色 */
-    .stApp {
-        background-color: #f5f7f9;
-    }
-    
-    /* 让聊天框的字体变大、变好看 */
-    .stChatMessage {
-        font-size: 16px;
-        border-radius: 10px;
-        padding: 10px;
-    }
-    
-    /* 给侧边栏加个背景色 */
-    [data-testid="stSidebar"] {
-        background-color: #ffffff;
-        border-right: 1px solid #e0e0e0;
-    }
+    .stApp { background-color: #f5f7f9; }
+    .stChatMessage { font-size: 16px; border-radius: 10px; padding: 10px; }
+    [data-testid="stSidebar"] { background-color: #ffffff; border-right: 1px solid #e0e0e0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -59,15 +43,20 @@ else:
     else:
         user_quota = response.data[0]["quota"]
 
-
 # ================= 侧边栏 =================
 with st.sidebar:
     st.title("🐱 宠物档案")
     st.write("名字：包子")
-    st.success("状态：已接入云端数据库")
+    st.success("状态：已接入云端数据库 + 视觉能力")
     
     st.divider()
     st.write(f"当前云端剩余额度：**{user_quota}** 次")
+    
+    # 📷 新增：上传图片
+    st.write("**给包子看张图：**")
+    uploaded_file = st.file_uploader("支持 JPG / PNG", type=["jpg", "jpeg", "png"])
+    if uploaded_file is not None:
+        st.image(uploaded_file, caption="包子正在盯着这张图...", use_container_width=True)
     
     with st.expander("💳 额度用完了？点击解锁"):
         card_code = st.text_input("输入你的卡密：", type="password")
@@ -86,7 +75,7 @@ with st.sidebar:
         st.session_state.messages = [{"role": "assistant", "content": "（包子甩了甩脑袋）我们重新认识一下吧！"}]
         st.rerun()
     
-    system_prompt = st.text_area("设置 AI 角色（性格）：", value="你是一只可爱的、性格傲娇的电子宠物。", height=100)
+    system_prompt = st.text_area("设置 AI 角色（性格）：", value="你是一只可爱的、性格傲娇的电子宠物。你现在长眼睛了，能看到主人发给你的图片。", height=100)
     
     # ================= 留言反馈系统 =================
     st.divider()
@@ -123,12 +112,9 @@ with st.sidebar:
 
 
 # ================= 网页主体 =================
-
-# 👑 后台视图拦截
 if st.session_state.is_admin:
     st.title("👑 老板专属后台")
     st.subheader("用户反馈墙")
-    
     try:
         res = supabase.table("feedbacks").select("*").order("created_at", desc=True).execute()
         if res.data:
@@ -138,18 +124,15 @@ if st.session_state.is_admin:
             st.write("暂时还没有用户留言哦~")
     except Exception as e:
         st.error(f"数据拉取失败: {e}")
-        
-    st.stop() # 看完后台，停止运行下面的聊天逻辑
-
+    st.stop()
 
 # 💬 正常聊天视图
 st.title("🐱 包子")
 st.divider()
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "主人你好！我已经接入了真实的大模型，现在我很聪明啦！"}]
+    st.session_state.messages = [{"role": "assistant", "content": "主人你好！我现在不仅能陪你聊天，还能看懂你发的图片啦！"}]
 
-# 渲染历史聊天记录（带酷炫头像）
 for msg in st.session_state.messages:
     if msg["role"] == "assistant":
         avatar_url = "https://api.dicebear.com/7.x/bottts/svg?seed=Baozi"
@@ -158,7 +141,6 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=avatar_url):
         st.write(msg["content"])
 
-# 核心商业逻辑拦截
 if user_quota <= 0:
     st.warning("⚠️ 云端免费额度已耗尽。请查看左侧边栏，输入卡密解锁！")
     st.chat_input("余额不足...", disabled=True)
@@ -170,12 +152,35 @@ else:
             st.write(prompt)
 
         with st.chat_message("assistant", avatar="https://api.dicebear.com/7.x/bottts/svg?seed=Baozi"):
-            with st.spinner("包子思考中..."):
+            with st.spinner("包子正在看图思考中..."):
                 try:
                     client = ZhipuAI(api_key=zhipu_api_key)
+                    
+                    # 🔥 核心修改：判断有没有传图片
+                    if uploaded_file is not None:
+                        model_name = "glm-4v-flash"  # 使用视觉模型
+                        
+                        # 把图片转成 Base64 编码
+                        image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
+                        
+                        # 构造多模态的消息格式
+                        messages_for_api = [
+                            {"role": "system", "content": system_prompt},
+                            # 把之前的聊天记录加进来（纯文本）
+                            *st.session_state.messages[:-1],
+                            # 把用户当前的文本和图片一起发给它
+                            {"role": "user", "content": [
+                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                                {"type": "text", "text": prompt}
+                            ]}
+                        ]
+                    else:
+                        model_name = "glm-4-flash" # 普通文本模型
+                        messages_for_api = [{"role": "system", "content": system_prompt}] + st.session_state.messages
+
                     response = client.chat.completions.create(
-                        model="glm-4-flash",
-                        messages=[{"role": "system", "content": system_prompt}] + st.session_state.messages,
+                        model=model_name,
+                        messages=messages_for_api,
                         stream=True
                     )
                     
@@ -187,10 +192,8 @@ else:
                     ai_reply = st.write_stream(generate_chunks())
                     st.session_state.messages.append({"role": "assistant", "content": ai_reply})
                     
-                    # 扣减云端额度
                     new_quota = user_quota - 1
                     supabase.table("user_quotas").update({"quota": new_quota}).eq("user_id", user_id).execute()
-                    
                     st.rerun()
                     
                 except Exception as e:
