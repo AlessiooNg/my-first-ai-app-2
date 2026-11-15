@@ -9,9 +9,7 @@ st.set_page_config(page_title="包子", page_icon="🐱", layout="centered")
 # ================= 🎨 注入 CSS 医美代码 =================
 st.markdown("""
 <style>
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-   /* 只隐藏主菜单和底部水印，保留顶部折叠按钮 */
+    /* 保留顶部 header，这样左上角的 >> 侧边栏开关就不会消失了 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stApp { background-color: #f5f7f9; }
@@ -54,7 +52,6 @@ with st.sidebar:
     st.divider()
     st.write(f"当前云端剩余额度：**{user_quota}** 次")
     
-    # 📷 新增：上传图片
     st.write("**给包子看张图：**")
     uploaded_file = st.file_uploader("支持 JPG / PNG", type=["jpg", "jpeg", "png"])
     if uploaded_file is not None:
@@ -158,28 +155,23 @@ else:
                 try:
                     client = ZhipuAI(api_key=zhipu_api_key)
                     
-                    # 🔥 核心修改：判断有没有传图片
                     if uploaded_file is not None:
-                        model_name = "glm-4v-flash"  # 使用视觉模型
+                        model_name = "glm-4v-flash"
                         
-                        # 把图片转成 Base64 编码
-                   # 每次读取前，把指针重置到开头
-uploaded_file.seek(0) 
-image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
+                        # 极其关键的修复：每次读取前重置指针！
+                        uploaded_file.seek(0)
+                        image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
                         
-                        # 构造多模态的消息格式
                         messages_for_api = [
                             {"role": "system", "content": system_prompt},
-                            # 把之前的聊天记录加进来（纯文本）
                             *st.session_state.messages[:-1],
-                            # 把用户当前的文本和图片一起发给它
                             {"role": "user", "content": [
                                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
                                 {"type": "text", "text": prompt}
                             ]}
                         ]
                     else:
-                        model_name = "glm-4-flash" # 普通文本模型
+                        model_name = "glm-4-flash"
                         messages_for_api = [{"role": "system", "content": system_prompt}] + st.session_state.messages
 
                     response = client.chat.completions.create(
