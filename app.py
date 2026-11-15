@@ -65,7 +65,21 @@ with st.sidebar:
         st.rerun()
     
     system_prompt = st.text_area("设置 AI 角色（性格）：", value="你是一只可爱的、性格傲娇的电子宠物。", height=100)
-
+    # ================= 留言反馈系统 =================
+    st.divider()
+    st.write("📬 给作者留言反馈：")
+    user_feedback = st.text_area("你觉得包子好玩吗？哪里需要改进？")
+    
+    if st.button("提交反馈", use_container_width=True):
+        if user_feedback:
+            try:
+                # 把反馈存进云端数据库
+                supabase.table("feedbacks").insert({"content": user_feedback}).execute()
+                st.success("感谢你的反馈！已收到！")
+            except Exception as e:
+                st.error(f"提交失败: {e}")
+        else:
+            st.warning("写点什么再提交哦~")
 # ================= 网页主体 =================
 st.title("🐱 包子")
 st.divider()
