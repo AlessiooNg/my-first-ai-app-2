@@ -188,53 +188,54 @@ for msg in st.session_state.messages:
 #     st.warning("⚠️ 云端免费额度已耗尽。请查看左侧边栏，输入卡密解锁！")
 #     st.chat_input("余额不足...", disabled=True)
 # else:
+# ================= 核心逻辑（暂时关闭拦截） =================
 if prompt := st.chat_input("和你的宠物说点什么吧..."):
-        
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
+    
+    st.session_state.messages.append({"role": "user", "content": prompt})
+    with st.chat_message("user"):
+        st.write(prompt)
 
-        with st.chat_message("assistant", avatar="https://api.dicebear.com/7.x/bottts/svg?seed=Baozi"):
-            with st.spinner("包子正在看图思考中..."):
-                try:
-                    client = ZhipuAI(api_key=zhipu_api_key)
-                    
-                    if uploaded_file is not None:
-                        model_name = "glm-4v-flash"
-                        uploaded_file.seek(0)
-                        image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
-                        messages_for_api = [
-                            {"role": "system", "content": system_prompt},
-                            *st.session_state.messages[:-1],
-                            {"role": "user", "content": [
-                                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
-                                {"type": "text", "text": prompt}
-                            ]}
-                        ]
-                    else:
-                        model_name = "glm-4-flash"
-                        messages_for_api = [{"role": "system", "content": system_prompt}] + st.session_state.messages
+    with st.chat_message("assistant", avatar="https://api.dicebear.com/7.x/bottts/svg?seed=Baozi"):
+        with st.spinner("包子正在看图思考中..."):
+            try:
+                client = ZhipuAI(api_key=zhipu_api_key)
+                
+                if uploaded_file is not None:
+                    model_name = "glm-4v-flash"
+                    uploaded_file.seek(0)
+                    image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
+                    messages_for_api = [
+                        {"role": "system", "content": system_prompt},
+                        *st.session_state.messages[:-1],
+                        {"role": "user", "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+                            {"type": "text", "text": prompt}
+                        ]}
+                    ]
+                else:
+                    model_name = "glm-4-flash"
+                    messages_for_api = [{"role": "system", "content": system_prompt}] + st.session_state.messages
 
-                    response = client.chat.completions.create(
-                        model=model_name,
-                        messages=messages_for_api,
-                        stream=True
-                    )
-                    
-                    def generate_chunks():
-                        for chunk in response:
-                            if chunk.choices[0].delta.content is not None:
-                                yield chunk.choices[0].delta.content
-                    
-                    ai_reply = st.write_stream(generate_chunks())
-                    st.session_state.messages.append({"role": "assistant", "content": ai_reply})
-                    
-                    # ✨ 这里调用语音函数！
-                    speak_text(ai_reply)
-                    
-                    new_quota = user_quota - 1
-                    supabase.table("user_quotas").update({"quota": new_quota}).eq("user_id", user_id).execute()
-                    # 注意：这里不能写 st.rerun()，不然声音会被直接掐断
-                    
-                except Exception as e:
-                    st.error(f"报错信息：{e}")
+                response = client.chat.completions.create(
+                    model=model_name,
+                    messages=messages_for_api,
+                    stream=True
+                )
+                
+                def generate_chunks():
+                    for chunk in response:
+                        if chunk.choices[0].delta.content is not None:
+                            yield chunk.choices[0].delta.content
+                
+                ai_reply = st.write_stream(generate_chunks())
+                st.session_state.messages.append({"role": "assistant", "content": ai_reply})
+                
+                # 🎙️ 触发语音朗读
+                speak_text(ai_reply)
+                
+                # 注意：我们保留了扣费代码，这样数据库依然会记录你们聊了多少次
+                new_quota = user_quota - 1
+                supabase.table("user_quotas").update({"quota": new_quota}).eq("user_id", user_id).execute()
+                
+            except Exception as e:
+                st.error(f"报错信息：{e}")
