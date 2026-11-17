@@ -200,13 +200,50 @@ else:
                     ai_reply = st.write_stream(generate_chunks())
                     st.session_state.messages.append({"role": "assistant", "content": ai_reply})
                     
-                    # 🎙️ 触发语音朗读
-                    speak_text(ai_reply)
-                    
-                    new_quota = user_quota - 1
-                    supabase.table("user_quotas").update({"quota": new_quota}).eq("user_id", user_id).execute()
-                    
-                    # 注意：我们去掉了 st.rerun()，否则会打断语音播放
+                  def speak_text(text):
+    # 清理文本，防止JS注入错误
+    clean_text = text.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
+    
+    js = f"""
+    <script>
+    // 在语音库准备好之后再执行
+    window.speechSynthesis.onvoiceschanged = function() {{
+        var msg = new SpeechSynthesisUtterance("{clean_text}");
+        var voices = window.speechSynthesis.getVoices();
+        
+        // 按优先级定义我们想要尝试的语音列表
+        var preferredVoices = [
+            "Microsoft Xiaoxiao", // 晓晓，Win/Edge
+            "Microsoft Xiaoyi",   // 晓伊，Win/Edge
+            "Tingting",           // 婷婷，macOS/iOS
+            "Microsoft Yunxi"     // 云希，Win/Edge
+        ];
+        
+        var selectedVoice = null;
+        // 遍历优先级列表，寻找第一个匹配的语音
+        for (var i = 0; i < preferredVoices.length; i++) {{
+            for (var j = 0; j < voices.length; j++) {{
+                if (voices[j].name.includes(preferredVoices[i])) {{
+                    selectedVoice = voices[j];
+                    break;
+                }}
+            }}
+            if (selectedVoice) break;
+        }}
+        
+        // 如果找到了，就指定；如果没找到，就保持浏览器默认
+        if (selectedVoice) {{
+            msg.voice = selectedVoice;
+        }}
+        
+        msg.lang = 'zh-CN';
+        msg.rate = 1.0;
+        msg.pitch = 1.2;
+        window.speechSynthesis.speak(msg);
+    }};
+    </script>
+    """
+    components.html(js, height=0)
                     
                 except Exception as e:
                     st.error(f"报错信息：{e}")
