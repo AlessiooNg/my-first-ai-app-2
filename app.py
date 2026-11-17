@@ -183,11 +183,12 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=avatar_url):
         st.write(msg["content"])
 
-if user_quota <= 0:
-    st.warning("⚠️ 云端免费额度已耗尽。请查看左侧边栏，输入卡密解锁！")
-    st.chat_input("余额不足...", disabled=True)
-else:
-    if prompt := st.chat_input("和你的宠物说点什么吧..."):
+# ================= 核心商业逻辑拦截（暂时关闭） =================
+# if user_quota <= 0:
+#     st.warning("⚠️ 云端免费额度已耗尽。请查看左侧边栏，输入卡密解锁！")
+#     st.chat_input("余额不足...", disabled=True)
+# else:
+if prompt := st.chat_input("和你的宠物说点什么吧..."):
         
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
