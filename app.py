@@ -1,3 +1,4 @@
+import streamlit.components.v1 as components
 import streamlit as st
 from zhipuai import ZhipuAI
 from supabase import create_client, Client
@@ -6,10 +7,24 @@ import base64
 
 st.set_page_config(page_title="包子", page_icon="🐱", layout="centered")
 
+def speak_text(text):
+    # 清理文本中的特殊符号，防止网页崩溃
+    clean_text = text.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
+    # 使用浏览器的 JavaScript 语音接口直接朗读
+    js = f"""
+    <script>
+    var msg = new SpeechSynthesisUtterance("{clean_text}");
+    msg.lang = 'zh-CN'; // 设置为中文发音
+    msg.rate = 1.0;     // 语速
+    msg.pitch = 1.2;    // 音调（傲娇一点）
+    window.speechSynthesis.speak(msg);
+    </script>
+    """
+    components.html(js, height=0)
+
 # ================= 🎨 注入 CSS 医美代码 =================
 st.markdown("""
 <style>
-    /* 保留顶部 header，这样左上角的 >> 侧边栏开关就不会消失了 */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stApp { background-color: #f5f7f9; }
@@ -47,7 +62,7 @@ else:
 with st.sidebar:
     st.title("🐱 宠物档案")
     st.write("名字：包子")
-    st.success("状态：已接入云端数据库 + 视觉能力")
+    st.success("状态：已接入云端数据库 + 视觉能力 + 声音")
     
     st.divider()
     st.write(f"当前云端剩余额度：**{user_quota}** 次")
@@ -130,7 +145,7 @@ st.title("🐱 包子")
 st.divider()
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "主人你好！我现在不仅能陪你聊天，还能看懂你发的图片啦！"}]
+    st.session_state.messages = [{"role": "assistant", "content": "主人你好！我现在不仅能陪你聊天，还能看懂你发的图片，而且我还会说话啦！"}]
 
 for msg in st.session_state.messages:
     if msg["role"] == "assistant":
@@ -157,11 +172,8 @@ else:
                     
                     if uploaded_file is not None:
                         model_name = "glm-4v-flash"
-                        
-                        # 极其关键的修复：每次读取前重置指针！
                         uploaded_file.seek(0)
                         image_base64 = base64.b64encode(uploaded_file.read()).decode('utf-8')
-                        
                         messages_for_api = [
                             {"role": "system", "content": system_prompt},
                             *st.session_state.messages[:-1],
@@ -188,9 +200,13 @@ else:
                     ai_reply = st.write_stream(generate_chunks())
                     st.session_state.messages.append({"role": "assistant", "content": ai_reply})
                     
+                    # 🎙️ 触发语音朗读
+                    speak_text(ai_reply)
+                    
                     new_quota = user_quota - 1
                     supabase.table("user_quotas").update({"quota": new_quota}).eq("user_id", user_id).execute()
-                    st.rerun()
+                    
+                    # 注意：我们去掉了 st.rerun()，否则会打断语音播放
                     
                 except Exception as e:
                     st.error(f"报错信息：{e}")
