@@ -4,38 +4,33 @@ from zhipuai import ZhipuAI
 from supabase import create_client, Client
 import uuid
 import base64
+import re # 引入正则库，用于过滤表情
 
 st.set_page_config(page_title="包子", page_icon="🐱", layout="centered")
 
-# ================= 🎙️ 升级版发声函数（支持高质量自然音色） =================
-def speak_text(text):
-    # 清理文本，防止JS注入错误
-    clean_text = text.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
+# ================= 🎙️ 升级版发声函数 =================
+def speak_text(text, voice_name):
+    # 1. 过滤掉表情包和特殊符号（只保留中文、英文、数字和常用标点）
+    clean_text = re.sub(r'[^\w\s\u4e00-\u9fa5，。？！、：；（）“”]', '', text)
+    # 2. 清理引号防止JS报错
+    clean_text = clean_text.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
     
     js = f"""
     <script>
-    // 在语音库准备好之后再执行
+    // 打断之前没念完的声音！
+    window.speechSynthesis.cancel();
+    
     window.speechSynthesis.onvoiceschanged = function() {{
         var msg = new SpeechSynthesisUtterance("{clean_text}");
         var voices = window.speechSynthesis.getVoices();
         
-        // 按优先级定义我们想要尝试的语音列表
-        var preferredVoices = [
-            "Microsoft Xiaoxiao", // 晓晓，Win/Edge 最自然的女声
-            "Microsoft Xiaoyi",   // 晓伊，Win/Edge 年轻活泼
-            "Tingting",           // 婷婷，macOS/iOS
-            "Microsoft Yunxi"     // 云希，Win/Edge 自然男声
-        ];
-        
+        // 寻找用户选择的音色
         var selectedVoice = null;
-        for (var i = 0; i < preferredVoices.length; i++) {{
-            for (var j = 0; j < voices.length; j++) {{
-                if (voices[j].name.includes(preferredVoices[i])) {{
-                    selectedVoice = voices[j];
-                    break;
-                }}
+        for (var i = 0; i < voices.length; i++) {{
+            if (voices[i].name.includes("{voice_name}")) {{
+                selectedVoice = voices[i];
+                break;
             }}
-            if (selectedVoice) break;
         }}
         
         if (selectedVoice) {{
@@ -44,7 +39,7 @@ def speak_text(text):
         
         msg.lang = 'zh-CN';
         msg.rate = 1.0;
-        msg.pitch = 1.1; // 稍微调低一点，听起来更自然
+        msg.pitch = 1.1;
         window.speechSynthesis.speak(msg);
     }};
     </script>
@@ -91,12 +86,18 @@ else:
 with st.sidebar:
     st.title("🐱 宠物档案")
     st.write("名字：包子")
-    st.success("状态：已接入云端 + 视觉 + 声音")
     
     st.divider()
     st.write(f"当前云端剩余额度：**{user_quota}** 次")
     
-    st.write("**给包子看张图：**")
+    # 🎙️ 增加音色选择器
+    st.write("**🔊 选择包子的声音：**")
+    voice_choice = st.selectbox(
+        "音色选择 (需使用 Edge 浏览器)",
+        ["Microsoft Xiaoxiao", "Microsoft Yunxi", "Microsoft Yunyang", "Tingting"]
+    )
+    
+    st.write("**📷 给包子看张图：**")
     uploaded_file = st.file_uploader("支持 JPG / PNG", type=["jpg", "jpeg", "png"])
     if uploaded_file is not None:
         st.image(uploaded_file, caption="包子正在盯着这张图...", use_container_width=True)
@@ -183,12 +184,11 @@ for msg in st.session_state.messages:
     with st.chat_message(msg["role"], avatar=avatar_url):
         st.write(msg["content"])
 
-# ================= 核心商业逻辑拦截（暂时关闭） =================
+# ================= 核心逻辑（暂时关闭拦截，尽情测试） =================
 # if user_quota <= 0:
 #     st.warning("⚠️ 云端免费额度已耗尽。请查看左侧边栏，输入卡密解锁！")
 #     st.chat_input("余额不足...", disabled=True)
 # else:
-# ================= 核心逻辑（暂时关闭拦截） =================
 if prompt := st.chat_input("和你的宠物说点什么吧..."):
     
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -230,10 +230,9 @@ if prompt := st.chat_input("和你的宠物说点什么吧..."):
                 ai_reply = st.write_stream(generate_chunks())
                 st.session_state.messages.append({"role": "assistant", "content": ai_reply})
                 
-                # 🎙️ 触发语音朗读
-                speak_text(ai_reply)
+                # 🎙️ 调用发声函数，并传入用户选择的音色
+                speak_text(ai_reply, voice_choice)
                 
-                # 注意：我们保留了扣费代码，这样数据库依然会记录你们聊了多少次
                 new_quota = user_quota - 1
                 supabase.table("user_quotas").update({"quota": new_quota}).eq("user_id", user_id).execute()
                 
