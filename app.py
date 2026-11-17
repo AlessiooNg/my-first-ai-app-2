@@ -7,17 +7,46 @@ import base64
 
 st.set_page_config(page_title="包子", page_icon="🐱", layout="centered")
 
+# ================= 🎙️ 升级版发声函数（支持高质量自然音色） =================
 def speak_text(text):
-    # 清理文本中的特殊符号，防止网页崩溃
+    # 清理文本，防止JS注入错误
     clean_text = text.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
-    # 使用浏览器的 JavaScript 语音接口直接朗读
+    
     js = f"""
     <script>
-    var msg = new SpeechSynthesisUtterance("{clean_text}");
-    msg.lang = 'zh-CN'; // 设置为中文发音
-    msg.rate = 1.0;     // 语速
-    msg.pitch = 1.2;    // 音调（傲娇一点）
-    window.speechSynthesis.speak(msg);
+    // 在语音库准备好之后再执行
+    window.speechSynthesis.onvoiceschanged = function() {{
+        var msg = new SpeechSynthesisUtterance("{clean_text}");
+        var voices = window.speechSynthesis.getVoices();
+        
+        // 按优先级定义我们想要尝试的语音列表
+        var preferredVoices = [
+            "Microsoft Xiaoxiao", // 晓晓，Win/Edge 最自然的女声
+            "Microsoft Xiaoyi",   // 晓伊，Win/Edge 年轻活泼
+            "Tingting",           // 婷婷，macOS/iOS
+            "Microsoft Yunxi"     // 云希，Win/Edge 自然男声
+        ];
+        
+        var selectedVoice = null;
+        for (var i = 0; i < preferredVoices.length; i++) {{
+            for (var j = 0; j < voices.length; j++) {{
+                if (voices[j].name.includes(preferredVoices[i])) {{
+                    selectedVoice = voices[j];
+                    break;
+                }}
+            }}
+            if (selectedVoice) break;
+        }}
+        
+        if (selectedVoice) {{
+            msg.voice = selectedVoice;
+        }}
+        
+        msg.lang = 'zh-CN';
+        msg.rate = 1.0;
+        msg.pitch = 1.1; // 稍微调低一点，听起来更自然
+        window.speechSynthesis.speak(msg);
+    }};
     </script>
     """
     components.html(js, height=0)
@@ -62,7 +91,7 @@ else:
 with st.sidebar:
     st.title("🐱 宠物档案")
     st.write("名字：包子")
-    st.success("状态：已接入云端数据库 + 视觉能力 + 声音")
+    st.success("状态：已接入云端 + 视觉 + 声音")
     
     st.divider()
     st.write(f"当前云端剩余额度：**{user_quota}** 次")
@@ -123,7 +152,6 @@ with st.sidebar:
         if st.button("退出后台"):
             st.session_state.is_admin = False
             st.rerun()
-
 
 # ================= 网页主体 =================
 if st.session_state.is_admin:
@@ -200,50 +228,12 @@ else:
                     ai_reply = st.write_stream(generate_chunks())
                     st.session_state.messages.append({"role": "assistant", "content": ai_reply})
                     
-                  def speak_text(text):
-    # 清理文本，防止JS注入错误
-    clean_text = text.replace('\n', ' ').replace('"', '\\"').replace("'", "\\'")
-    
-    js = f"""
-    <script>
-    // 在语音库准备好之后再执行
-    window.speechSynthesis.onvoiceschanged = function() {{
-        var msg = new SpeechSynthesisUtterance("{clean_text}");
-        var voices = window.speechSynthesis.getVoices();
-        
-        // 按优先级定义我们想要尝试的语音列表
-        var preferredVoices = [
-            "Microsoft Xiaoxiao", // 晓晓，Win/Edge
-            "Microsoft Xiaoyi",   // 晓伊，Win/Edge
-            "Tingting",           // 婷婷，macOS/iOS
-            "Microsoft Yunxi"     // 云希，Win/Edge
-        ];
-        
-        var selectedVoice = null;
-        // 遍历优先级列表，寻找第一个匹配的语音
-        for (var i = 0; i < preferredVoices.length; i++) {{
-            for (var j = 0; j < voices.length; j++) {{
-                if (voices[j].name.includes(preferredVoices[i])) {{
-                    selectedVoice = voices[j];
-                    break;
-                }}
-            }}
-            if (selectedVoice) break;
-        }}
-        
-        // 如果找到了，就指定；如果没找到，就保持浏览器默认
-        if (selectedVoice) {{
-            msg.voice = selectedVoice;
-        }}
-        
-        msg.lang = 'zh-CN';
-        msg.rate = 1.0;
-        msg.pitch = 1.2;
-        window.speechSynthesis.speak(msg);
-    }};
-    </script>
-    """
-    components.html(js, height=0)
+                    # ✨ 这里调用语音函数！
+                    speak_text(ai_reply)
+                    
+                    new_quota = user_quota - 1
+                    supabase.table("user_quotas").update({"quota": new_quota}).eq("user_id", user_id).execute()
+                    # 注意：这里不能写 st.rerun()，不然声音会被直接掐断
                     
                 except Exception as e:
                     st.error(f"报错信息：{e}")
